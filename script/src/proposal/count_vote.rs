@@ -1,10 +1,7 @@
+#![allow(missing_docs)]
 use super::{Proposal, Vote};
 use ckb_hash::blake2b_256;
-use ckb_types::{
-    core::BlockView,
-    packed::Script,
-    prelude::*,
-};
+use ckb_types::{core::BlockView, packed::Script, prelude::*};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -24,11 +21,11 @@ fn find_proposal(blocks: &[BlockView], proposal_script: &Script) -> Option<Propo
         let outputs_data = raw.outputs_data();
         for i in 0..outputs.len() {
             let output = outputs.get(i).expect("should exist");
-            if let Some(type_script) = output.type_().to_opt() {
-                if type_script.as_slice() == proposal_script.as_slice() {
-                    let cell_data = outputs_data.get(i)?;
-                    return Proposal::from_compatible_slice(&cell_data.raw_data()).ok();
-                }
+            if let Some(type_script) = output.type_().to_opt()
+                && type_script.as_slice() == proposal_script.as_slice()
+            {
+                let cell_data = outputs_data.get(i)?;
+                return Proposal::from_compatible_slice(&cell_data.raw_data()).ok();
             }
         }
     }
@@ -119,7 +116,7 @@ pub fn count_vote(blocks: &[BlockView], proposal_script: &Script) -> VoteResult 
                 if type_script.hash_type().as_slice() != vote_hash_type.as_slice() {
                     continue;
                 }
-                if type_script.args().raw_data() != &proposal_blake160[..] {
+                if type_script.args().raw_data() != proposal_blake160[..] {
                     continue;
                 }
 
@@ -144,7 +141,8 @@ pub fn count_vote(blocks: &[BlockView], proposal_script: &Script) -> VoteResult 
                 );
 
                 for idx_reader in vote.as_reader().dao_index().iter() {
-                    let idx = u16::from_le_bytes(idx_reader.as_slice().try_into().unwrap()) as usize;
+                    let idx =
+                        u16::from_le_bytes(idx_reader.as_slice().try_into().unwrap()) as usize;
                     if let Some(cell_dep) = cell_deps.get(idx) {
                         let op_bytes: [u8; 36] = cell_dep
                             .out_point()
@@ -162,7 +160,7 @@ pub fn count_vote(blocks: &[BlockView], proposal_script: &Script) -> VoteResult 
 
     let mut yes_vote: u64 = 0;
     let mut no_vote: u64 = 0;
-    for (_key, (direction, amount)) in &vote_map {
+    for (direction, amount) in vote_map.values() {
         if *direction == 1 {
             yes_vote = yes_vote.saturating_add(*amount);
         } else {

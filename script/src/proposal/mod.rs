@@ -1,7 +1,7 @@
 pub mod count_vote;
-mod types;
 #[cfg(test)]
 mod tests;
+mod types;
 
 pub use types::*;
 

@@ -12,6 +12,7 @@ types.rs: types.mol
 	cp $(SCHEMA_DIR)/extensions.mol .; \
 	cp $(SCHEMA_DIR)/protocols.mol .; \
 	moleculec --language rust --schema-file types.mol > types.rs
+	@perl -i -pe '$$_ .= "#![allow(missing_docs)]\n#![allow(clippy::all)]\n" if $$. == 1' types.rs
 
 clean:
 	rm -f blockchain.mol extensions.mol protocols.mol

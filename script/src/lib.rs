@@ -1,6 +1,7 @@
 //! CKB component to run the type/lock scripts.
 pub mod cost_model;
 mod error;
+#[allow(missing_docs)]
 pub mod proposal;
 mod scheduler;
 mod syscalls;

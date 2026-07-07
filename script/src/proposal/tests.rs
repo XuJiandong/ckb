@@ -9,24 +9,22 @@ use ckb_types::{
 };
 use std::collections::BTreeMap;
 
+#[allow(dead_code)]
 struct MockBlockProvider {
     blocks: BTreeMap<u64, BlockView>,
 }
 
+#[allow(dead_code)]
 impl MockBlockProvider {
     fn new(blocks: Vec<BlockView>) -> Self {
-        let map: BTreeMap<u64, BlockView> =
-            blocks.into_iter().map(|b| (b.number(), b)).collect();
+        let map: BTreeMap<u64, BlockView> = blocks.into_iter().map(|b| (b.number(), b)).collect();
         Self { blocks: map }
     }
 }
 
 impl BlockProvider for MockBlockProvider {
     fn get_block(&self, hash: &packed::Byte32) -> Option<BlockView> {
-        self.blocks
-            .values()
-            .find(|b| &b.hash() == hash)
-            .cloned()
+        self.blocks.values().find(|b| &b.hash() == hash).cloned()
     }
 
     fn get_block_header(&self, hash: &packed::Byte32) -> Option<HeaderView> {
@@ -63,7 +61,10 @@ fn make_proposal_script() -> packed::Script {
         .build()
 }
 
-fn make_vote_type_script(vote_code_hash: &[u8; 32], proposal_blake160: &[u8; 20]) -> packed::Script {
+fn make_vote_type_script(
+    vote_code_hash: &[u8; 32],
+    proposal_blake160: &[u8; 20],
+) -> packed::Script {
     packed::Script::new_builder()
         .code_hash(packed::Byte32::from(*vote_code_hash))
         .hash_type(0u8)
@@ -116,14 +117,16 @@ fn make_vote_tx(
         .output_data(packed::Bytes::from(vote.as_slice().to_vec()))
 }
 
-fn build_block(number: u64, parent_hash: packed::Byte32, txs: Vec<TransactionBuilder>) -> BlockView {
-    let tx_views: Vec<ckb_types::core::TransactionView> = txs
-        .into_iter()
-        .map(|tx| tx.build())
-        .collect();
+fn build_block(
+    number: u64,
+    parent_hash: packed::Byte32,
+    txs: Vec<TransactionBuilder>,
+) -> BlockView {
+    let tx_views: Vec<ckb_types::core::TransactionView> =
+        txs.into_iter().map(|tx| tx.build()).collect();
     BlockBuilder::default()
         .number(uint64(number))
-        .parent_hash(parent_hash.clone())
+        .parent_hash(parent_hash)
         .epoch(epoch())
         .transactions(tx_views)
         .build_unchecked()
@@ -219,7 +222,7 @@ fn test_count_vote_mixed() {
 fn test_count_vote_yes_beats_no() {
     let (blocks, proposal_script, _proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 1, 2);
     let result = count_vote(&blocks, &proposal_script);
-    let expected_yes = 5 * 1 * 100;
+    let expected_yes = 5 * 100;
     let expected_no = 5 * 2 * 50;
     assert_eq!(result.yes_vote, expected_yes);
     assert_eq!(result.no_vote, expected_no);
@@ -232,7 +235,7 @@ fn test_count_vote_minimal_requirement_not_met() {
     let (blocks, proposal_script, _proposal) =
         build_voting_chain(5, vec![1u8; 32], 0, minimal_req, 1, 0);
     let result = count_vote(&blocks, &proposal_script);
-    assert_eq!(result.yes_vote, 5 * 1 * 100);
+    assert_eq!(result.yes_vote, 5 * 100);
     assert_eq!(result.no_vote, 0);
     let min_shannon = minimal_req * 100_000_000;
     assert!(result.yes_vote + result.no_vote <= min_shannon);
@@ -243,7 +246,7 @@ fn test_count_vote_minimal_requirement_not_met() {
 fn test_count_vote_minimal_requirement_met() {
     let (blocks, proposal_script, _proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 1, 0);
     let result = count_vote(&blocks, &proposal_script);
-    assert_eq!(result.yes_vote, 5 * 1 * 100);
+    assert_eq!(result.yes_vote, 5 * 100);
     assert_eq!(result.no_vote, 0);
     assert!(result.passed);
 }
@@ -262,7 +265,7 @@ fn test_count_vote_no_blocks() {
 fn test_vote_retraction_same_voter_overwrites() {
     let (blocks, proposal_script, _proposal) = build_voting_chain(2, vec![1u8; 32], 0, 0, 1, 0);
     let result = count_vote(&blocks, &proposal_script);
-    assert_eq!(result.yes_vote, 2 * 1 * 100);
+    assert_eq!(result.yes_vote, 2 * 100);
 }
 
 #[test]
@@ -319,11 +322,7 @@ fn test_dao_double_vote_prevention() {
         let vote = Vote::new_builder()
             .vote(1u8)
             .amount(uint64(100))
-            .dao_index(
-                Uint16Vec::new_builder()
-                    .push(dao_idx)
-                    .build(),
-            )
+            .dao_index(Uint16Vec::new_builder().push(dao_idx).build())
             .build();
 
         TransactionBuilder::default()
@@ -346,7 +345,11 @@ fn test_dao_double_vote_prevention() {
     let mut blocks = Vec::with_capacity(3);
     let mut parent_hash = packed::Byte32::zero();
 
-    let block0 = build_block(0, parent_hash, vec![make_proposal_tx(&proposal, &proposal_script)]);
+    let block0 = build_block(
+        0,
+        parent_hash,
+        vec![make_proposal_tx(&proposal, &proposal_script)],
+    );
     parent_hash = block0.hash();
     blocks.push(block0);
 
