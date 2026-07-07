@@ -3,6 +3,7 @@ use crate::ChunkCommand;
 use crate::scheduler::Scheduler;
 use crate::{
     error::{ScriptError, TransactionScriptError},
+    proposal::{BlockProvider, ProposalTypeSystemScript},
     syscalls::generator::generate_ckb_syscalls,
     type_id::TypeIdSystemScript,
     types::{
@@ -17,8 +18,10 @@ use ckb_error::Error;
 use ckb_logger::{debug, info};
 use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
+    H256,
     bytes::Bytes,
     core::{Cycle, ScriptHashType, cell::ResolvedTransaction},
+    h256,
     packed::{Byte32, Script},
 };
 #[cfg(not(target_family = "wasm"))]
@@ -30,6 +33,8 @@ use tokio::sync::{
     oneshot,
     watch::{self, Receiver},
 };
+
+pub const PROPOSAL_TYPE_CODE_HASH: H256 = h256!("0x50524f504f53414c");
 
 #[cfg(test)]
 mod tests;
@@ -43,6 +48,7 @@ pub struct TransactionScriptsVerifier<
     tx_data: Arc<TxData<DL>>,
     syscall_generator: SyscallGenerator<DL, V, <M as DefaultMachineRunner>::Inner>,
     syscall_context: V,
+    block_provider: Option<Arc<dyn BlockProvider + Send + Sync>>,
 }
 
 impl<DL> TransactionScriptsVerifier<DL>
@@ -116,7 +122,14 @@ where
             tx_data,
             syscall_generator,
             syscall_context,
+            block_provider: None,
         }
+    }
+
+    /// Sets a block provider for embedded scripts that require block access
+    pub fn with_block_provider(mut self, bp: Arc<dyn BlockProvider + Send + Sync>) -> Self {
+        self.block_provider = Some(bp);
+        self
     }
 
     //////////////////////////////////////////////////////////////////
@@ -222,6 +235,20 @@ where
                 rtx: &self.tx_data.rtx,
                 script_group: group,
                 max_cycles,
+            };
+            verifier.verify()
+        } else if group.script.code_hash() == PROPOSAL_TYPE_CODE_HASH.into()
+            && Into::<u8>::into(group.script.hash_type()) == Into::<u8>::into(ScriptHashType::Type)
+        {
+            let bp = self
+                .block_provider
+                .as_deref()
+                .ok_or_else(|| ScriptError::Other("block provider not set".to_string()))?;
+            let verifier = ProposalTypeSystemScript {
+                rtx: &self.tx_data.rtx,
+                script_group: group,
+                max_cycles,
+                block_provider: bp,
             };
             verifier.verify()
         } else {
@@ -333,6 +360,20 @@ where
                 rtx: &self.tx_data.rtx,
                 script_group: group,
                 max_cycles,
+            };
+            verifier.verify()
+        } else if group.script.code_hash() == PROPOSAL_TYPE_CODE_HASH.into()
+            && Into::<u8>::into(group.script.hash_type()) == Into::<u8>::into(ScriptHashType::Type)
+        {
+            let bp = self
+                .block_provider
+                .as_deref()
+                .ok_or_else(|| ScriptError::Other("block provider not set".to_string()))?;
+            let verifier = ProposalTypeSystemScript {
+                rtx: &self.tx_data.rtx,
+                script_group: group,
+                max_cycles,
+                block_provider: bp,
             };
             verifier.verify()
         } else {

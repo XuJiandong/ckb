@@ -1,0 +1,19 @@
+import protocols;
+
+vector Uint16Vec <Uint16>;
+
+table Vote {
+    vote: byte,
+    amount: Uint64,
+    dao_index: Uint16Vec,
+}
+
+table Proposal {
+    duration: Uint32,
+    vote_cell_code_hash: Byte32,
+    vote_cell_hash_type: byte,
+    description: Bytes,
+    receiver: Script,
+    amount: Uint64,
+    minimal_requirement: Uint64,
+}
