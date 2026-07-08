@@ -1,6 +1,7 @@
 use super::BlockProvider;
 use super::count_vote::count_vote;
 use super::{Proposal, Uint16Vec, Vote};
+use crate::ScriptError;
 use ckb_hash::blake2b_256;
 use ckb_types::{
     core::{BlockBuilder, BlockView, HeaderView, TransactionBuilder},
@@ -193,7 +194,8 @@ fn build_voting_chain(
 #[test]
 fn test_count_vote_all_yes() {
     let (blocks, proposal_script, proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 3, 0);
-    let result = count_vote(&blocks, &proposal_script);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.proposal.as_slice(), proposal.as_slice());
     assert_eq!(result.yes_vote, 5 * 3 * 100);
     assert_eq!(result.no_vote, 0);
@@ -202,8 +204,9 @@ fn test_count_vote_all_yes() {
 
 #[test]
 fn test_count_vote_all_no() {
-    let (blocks, proposal_script, _proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 0, 3);
-    let result = count_vote(&blocks, &proposal_script);
+    let (blocks, proposal_script, proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 0, 3);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.yes_vote, 0);
     assert_eq!(result.no_vote, 5 * 3 * 50);
     assert!(!result.passed);
@@ -211,8 +214,9 @@ fn test_count_vote_all_no() {
 
 #[test]
 fn test_count_vote_mixed() {
-    let (blocks, proposal_script, _proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 4, 2);
-    let result = count_vote(&blocks, &proposal_script);
+    let (blocks, proposal_script, proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 4, 2);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.yes_vote, 5 * 4 * 100);
     assert_eq!(result.no_vote, 5 * 2 * 50);
     assert!(result.passed);
@@ -220,8 +224,9 @@ fn test_count_vote_mixed() {
 
 #[test]
 fn test_count_vote_yes_beats_no() {
-    let (blocks, proposal_script, _proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 1, 2);
-    let result = count_vote(&blocks, &proposal_script);
+    let (blocks, proposal_script, proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 1, 2);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     let expected_yes = 5 * 100;
     let expected_no = 5 * 2 * 50;
     assert_eq!(result.yes_vote, expected_yes);
@@ -232,9 +237,10 @@ fn test_count_vote_yes_beats_no() {
 #[test]
 fn test_count_vote_minimal_requirement_not_met() {
     let minimal_req = 100_000;
-    let (blocks, proposal_script, _proposal) =
+    let (blocks, proposal_script, proposal) =
         build_voting_chain(5, vec![1u8; 32], 0, minimal_req, 1, 0);
-    let result = count_vote(&blocks, &proposal_script);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.yes_vote, 5 * 100);
     assert_eq!(result.no_vote, 0);
     let min_shannon = minimal_req * 100_000_000;
@@ -244,8 +250,9 @@ fn test_count_vote_minimal_requirement_not_met() {
 
 #[test]
 fn test_count_vote_minimal_requirement_met() {
-    let (blocks, proposal_script, _proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 1, 0);
-    let result = count_vote(&blocks, &proposal_script);
+    let (blocks, proposal_script, proposal) = build_voting_chain(5, vec![1u8; 32], 0, 0, 1, 0);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.yes_vote, 5 * 100);
     assert_eq!(result.no_vote, 0);
     assert!(result.passed);
@@ -253,18 +260,20 @@ fn test_count_vote_minimal_requirement_met() {
 
 #[test]
 fn test_count_vote_no_blocks() {
-    let blocks: Vec<BlockView> = vec![];
-    let proposal_script = make_proposal_script();
-    let result = count_vote(&blocks, &proposal_script);
-    assert!(!result.passed);
-    assert_eq!(result.yes_vote, 0);
-    assert_eq!(result.no_vote, 0);
+    let (blocks, proposal_script, proposal) = build_voting_chain(1, vec![1u8; 32], 0, 0, 1, 0);
+    let provider = MockBlockProvider::new(blocks.into_iter().take(1).collect());
+    let err = count_vote(&provider, &proposal, &proposal_script, 0).unwrap_err();
+    match err {
+        ScriptError::ValidationFailure(_, code) => assert_eq!(code, -7),
+        other => panic!("expected ValidationFailure, got {:?}", other),
+    }
 }
 
 #[test]
 fn test_vote_retraction_same_voter_overwrites() {
-    let (blocks, proposal_script, _proposal) = build_voting_chain(2, vec![1u8; 32], 0, 0, 1, 0);
-    let result = count_vote(&blocks, &proposal_script);
+    let (blocks, proposal_script, proposal) = build_voting_chain(2, vec![1u8; 32], 0, 0, 1, 0);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.yes_vote, 2 * 100);
 }
 
@@ -360,6 +369,7 @@ fn test_dao_double_vote_prevention() {
     let block2 = build_block(2, parent_hash, vec![make_spend_tx()]);
     blocks.push(block2);
 
-    let result = count_vote(&blocks, &proposal_script);
+    let provider = MockBlockProvider::new(blocks);
+    let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.yes_vote, 0);
 }

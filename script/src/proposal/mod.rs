@@ -1,6 +1,8 @@
 pub mod count_vote;
 #[cfg(test)]
 mod tests;
+#[allow(missing_docs)]
+#[allow(clippy::all)]
 mod types;
 
 pub use types::*;
@@ -14,7 +16,7 @@ use ckb_types::{
     prelude::*,
 };
 
-pub const PROPOSAL_CYCLES: Cycle = 10_000_000;
+pub const PROPOSAL_CYCLES: Cycle = 100_000_000;
 
 pub const ERROR_ARGS: i8 = -1;
 pub const ERROR_TOO_MANY_CELLS: i8 = -2;
@@ -86,12 +88,20 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
         blake2b.update(&first_output_index.to_le_bytes());
         let mut ret = [0; 32];
         blake2b.finalize(&mut ret);
+        let mut blake160 = [0; 20];
+        blake160.copy_from_slice(&ret[..20]);
 
-        if ret[..] != self.script_group.script.args().raw_data()[..] {
+        if blake160[..] != self.script_group.script.args().raw_data()[..] {
             return Err(self.validation_failure(ERROR_INVALID_INPUT_HASH));
         }
+        // TODO: verify the proposal cell data is valid
+        //    - `vote_cell_code_hash` / `vote_cell_hash_type`
+        //    - `duration`
+        //    - `amount`
+        //    - `minimal_requirement`
 
-        Ok(PROPOSAL_CYCLES)
+        // default cycles for creating
+        Ok(1_000_000)
     }
 
     fn verify_consumption(&self) -> Result<Cycle, ScriptError> {
@@ -141,7 +151,10 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
                 .try_into()
                 .map_err(|_| self.validation_failure(ERROR_PARSE_CELL_DATA))?,
         );
-
+        // TODO: this is about 30 days
+        if !(360..=250_000).contains(&duration) {
+            return Err(self.validation_failure(ERROR_PARSE_CELL_DATA));
+        }
         let start_header = self
             .block_provider
             .get_block_header(&header_dep_0)
@@ -156,24 +169,15 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
             return Err(self.validation_failure(ERROR_BLOCK_RANGE_INVALID));
         }
 
-        let mut blocks: Vec<BlockView> = Vec::with_capacity(duration as usize + 1);
-        blocks.push(
-            self.block_provider
-                .get_block(&header_dep_0)
-                .ok_or_else(|| self.validation_failure(ERROR_INVALID_START_BLOCK))?,
-        );
-        for block_number in (start_header.number() + 1)..=end_header.number() {
-            let block = self
-                .block_provider
-                .get_block_by_number(block_number)
-                .ok_or_else(|| self.validation_failure(ERROR_BLOCK_COUNT_MISMATCH))?;
-            blocks.push(block);
-        }
-
-        let result = count_vote(&blocks, &self.script_group.script);
+        let (result, cycles) = count_vote(
+            self.block_provider,
+            &proposal,
+            &self.script_group.script,
+            start_header.number(),
+        )?;
 
         if result.passed {
-            Ok(PROPOSAL_CYCLES)
+            Ok(cycles)
         } else {
             Err(self.validation_failure(ERROR_PROPOSAL_FAILED))
         }
