@@ -16,6 +16,7 @@ use ckb_types::{
     prelude::*,
 };
 
+// TODO:
 pub const PROPOSAL_CYCLES: Cycle = 100_000_000;
 
 pub const ERROR_ARGS: i8 = -1;
