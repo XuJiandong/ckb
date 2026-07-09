@@ -19,6 +19,13 @@ use ckb_types::{
 // TODO:
 pub const PROPOSAL_CYCLES: Cycle = 100_000_000;
 
+/// Minimum capacity (in shannon) that a proposal cell must lock at creation
+/// time as an anti-spam deposit. Set to 1000 CKBytes.
+///
+/// If a proposal fails (or is never settled), the cell is unspendable, so this
+/// capacity is permanently lost — the cost of spamming.
+pub const MIN_PROPOSAL_CAPACITY: u64 = 100_000_000_000;
+
 pub const ERROR_ARGS: i8 = -1;
 pub const ERROR_TOO_MANY_CELLS: i8 = -2;
 pub const ERROR_INVALID_INPUT_HASH: i8 = -3;
@@ -33,6 +40,7 @@ pub const ERROR_MISSING_HEADER_DEPS: i8 = -11;
 pub const ERROR_PARSE_CELL_DATA: i8 = -12;
 pub const ERROR_OVERFLOW: i8 = -13;
 pub const ERROR_UNEXPECTED: i8 = -14;
+pub const ERROR_INSUFFICIENT_CAPACITY: i8 = -15;
 
 pub trait BlockProvider {
     fn get_block(&self, hash: &Byte32) -> Option<BlockView>;
@@ -97,6 +105,19 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
         if blake160[..] != self.script_group.script.args().raw_data()[..] {
             return Err(self.validation_failure(ERROR_INVALID_INPUT_HASH));
         }
+        let output = self
+            .rtx
+            .transaction
+            .data()
+            .raw()
+            .outputs()
+            .get(first_output_index as usize)
+            .ok_or_else(|| self.validation_failure(ERROR_ARGS))?;
+        let capacity: u64 = output.capacity().unpack();
+        if capacity < MIN_PROPOSAL_CAPACITY {
+            return Err(self.validation_failure(ERROR_INSUFFICIENT_CAPACITY));
+        }
+
         // TODO: verify the proposal cell data is valid
         //    - `vote_cell_code_hash` / `vote_cell_hash_type`
         //    - `duration`

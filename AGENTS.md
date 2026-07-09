@@ -9,7 +9,7 @@ Follow the spec when making changes. If some rules are not covered by the spec, 
 ## Tests
 After every change, test it with:
 ```
-cargo test -- proposal
+cargo test -p ckb-script --lib -- proposal
 ```
 
 ## Clippy and fmt

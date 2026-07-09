@@ -1,10 +1,13 @@
 use super::BlockProvider;
 use super::count_vote::count_vote;
-use super::{Proposal, Uint16Vec, Vote};
-use crate::ScriptError;
-use ckb_hash::blake2b_256;
+use super::{
+    ERROR_INSUFFICIENT_CAPACITY, MIN_PROPOSAL_CAPACITY, PROPOSAL_CYCLES, Proposal,
+    ProposalTypeSystemScript, Uint16Vec, Vote,
+};
+use crate::{ScriptError, ScriptGroup, ScriptGroupType};
+use ckb_hash::{blake2b_256, new_blake2b};
 use ckb_types::{
-    core::{BlockBuilder, BlockView, HeaderView, TransactionBuilder},
+    core::{BlockBuilder, BlockView, HeaderView, TransactionBuilder, cell::ResolvedTransaction},
     packed,
     prelude::*,
 };
@@ -372,4 +375,103 @@ fn test_dao_double_vote_prevention() {
     let provider = MockBlockProvider::new(blocks);
     let (result, _cycles) = count_vote(&provider, &proposal, &proposal_script, 0).unwrap();
     assert_eq!(result.yes_vote, 0);
+}
+
+fn build_creation_scenario(capacity: u64) -> (ResolvedTransaction, ScriptGroup, MockBlockProvider) {
+    let proposal_code_hash: [u8; 32] = blake2b_256(b"proposal_type_script");
+    let proposal = Proposal::new_builder()
+        .duration(uint32(360))
+        .vote_cell_code_hash(packed::Byte32::from([1u8; 32]))
+        .vote_cell_hash_type(0u8)
+        .description(packed::Bytes::default())
+        .receiver(packed::Script::default())
+        .amount(uint64(0))
+        .minimal_requirement(uint64(0))
+        .build();
+
+    let first_input = packed::CellInput::new_builder()
+        .previous_output(
+            packed::OutPoint::new_builder()
+                .tx_hash(packed::Byte32::from([0x42u8; 32]))
+                .index(uint32(0))
+                .build(),
+        )
+        .since(uint64(0))
+        .build();
+
+    // The proposal type script args is blake160(first_cell_input || output_index),
+    // matching the construction verified in `verify_creation`.
+    let mut blake2b = new_blake2b();
+    blake2b.update(first_input.as_slice());
+    blake2b.update(&0u64.to_le_bytes());
+    let mut ret = [0u8; 32];
+    blake2b.finalize(&mut ret);
+    let mut blake160 = [0u8; 20];
+    blake160.copy_from_slice(&ret[..20]);
+
+    let proposal_script = packed::Script::new_builder()
+        .code_hash(packed::Byte32::from(proposal_code_hash))
+        .hash_type(1u8)
+        .args(packed::Bytes::from(blake160.to_vec()))
+        .build();
+
+    let proposal_output = packed::CellOutput::new_builder()
+        .capacity(uint64(capacity))
+        .lock(packed::Script::default())
+        .type_(
+            packed::ScriptOpt::new_builder()
+                .set(Some(proposal_script.clone()))
+                .build(),
+        )
+        .build();
+
+    let tx = TransactionBuilder::default()
+        .version(uint32(0))
+        .input(first_input)
+        .output(proposal_output)
+        .output_data(packed::Bytes::from(proposal.as_slice().to_vec()))
+        .build();
+
+    let rtx = ResolvedTransaction {
+        transaction: tx,
+        resolved_cell_deps: vec![],
+        resolved_inputs: vec![],
+        resolved_dep_groups: vec![],
+    };
+
+    let script_group = ScriptGroup {
+        script: proposal_script,
+        group_type: ScriptGroupType::Type,
+        input_indices: vec![],
+        output_indices: vec![0],
+    };
+
+    let bp = MockBlockProvider::new(vec![]);
+    (rtx, script_group, bp)
+}
+
+fn verify_creation(capacity: u64) -> Result<u64, ScriptError> {
+    let (rtx, script_group, bp) = build_creation_scenario(capacity);
+    let verifier = ProposalTypeSystemScript {
+        rtx: &rtx,
+        script_group: &script_group,
+        max_cycles: PROPOSAL_CYCLES + 1_000_000,
+        block_provider: &bp,
+    };
+    verifier.verify()
+}
+
+#[test]
+fn test_creation_rejects_insufficient_capacity() {
+    let err = verify_creation(MIN_PROPOSAL_CAPACITY - 1).unwrap_err();
+    match err {
+        ScriptError::ValidationFailure(_, code) => assert_eq!(code, ERROR_INSUFFICIENT_CAPACITY),
+        other => panic!("expected ValidationFailure, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_creation_accepts_min_capacity() {
+    verify_creation(MIN_PROPOSAL_CAPACITY).expect("min capacity should be accepted");
+    verify_creation(MIN_PROPOSAL_CAPACITY + 1).expect("above min capacity should be accepted");
 }
