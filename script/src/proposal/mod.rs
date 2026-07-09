@@ -31,6 +31,8 @@ pub const ERROR_PROPOSAL_FAILED: i8 = -9;
 pub const ERROR_INVALID_START_BLOCK: i8 = -10;
 pub const ERROR_MISSING_HEADER_DEPS: i8 = -11;
 pub const ERROR_PARSE_CELL_DATA: i8 = -12;
+pub const ERROR_OVERFLOW: i8 = -13;
+pub const ERROR_UNEXPECTED: i8 = -14;
 
 pub trait BlockProvider {
     fn get_block(&self, hash: &Byte32) -> Option<BlockView>;
