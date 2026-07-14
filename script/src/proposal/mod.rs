@@ -1,18 +1,13 @@
 pub mod count_vote;
 #[cfg(test)]
 mod tests;
-#[allow(missing_docs)]
-#[allow(clippy::all)]
-mod types;
-
-pub use types::*;
 
 use crate::proposal::count_vote::count_vote;
 use crate::{ScriptError, ScriptGroup};
 use ckb_hash::new_blake2b;
 use ckb_types::{
     core::{BlockView, Cycle, HeaderView, cell::ResolvedTransaction},
-    packed::Byte32,
+    packed::{Byte32, Proposal},
     prelude::*,
 };
 

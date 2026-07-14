@@ -246,7 +246,7 @@ check-dirty-hashes-toml: gen-hashes
 .PHONY: gen
 GEN_MOL_IN_DIR := util/gen-types/schemas
 GEN_MOL_OUT_DIR := util/gen-types/src/generated
-GEN_MOL_FILES := ${GEN_MOL_OUT_DIR}/blockchain.rs ${GEN_MOL_OUT_DIR}/extensions.rs ${GEN_MOL_OUT_DIR}/protocols.rs
+GEN_MOL_FILES := ${GEN_MOL_OUT_DIR}/blockchain.rs ${GEN_MOL_OUT_DIR}/extensions.rs ${GEN_MOL_OUT_DIR}/protocols.rs ${GEN_MOL_OUT_DIR}/proposal.rs
 gen: check-moleculec-version ${GEN_MOL_FILES} # Generate Protocol Files
 
 .PHONY: update-default-valid-target
@@ -268,6 +268,10 @@ ${GEN_MOL_OUT_DIR}/extensions.rs: ${GEN_MOL_IN_DIR}/extensions.mol
 
 .PHONY: ${GEN_MOL_OUT_DIR}/protocols.rs
 ${GEN_MOL_OUT_DIR}/protocols.rs: ${GEN_MOL_IN_DIR}/protocols.mol
+	${MOLC} --language rust --schema-file $< | rustfmt > $@
+
+.PHONY: ${GEN_MOL_OUT_DIR}/proposal.rs
+${GEN_MOL_OUT_DIR}/proposal.rs: ${GEN_MOL_IN_DIR}/proposal.mol
 	${MOLC} --language rust --schema-file $< | rustfmt > $@
 
 ##@ Cleanup

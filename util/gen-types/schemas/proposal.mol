@@ -1,3 +1,4 @@
+import blockchain;
 import protocols;
 
 vector Uint16Vec <Uint16>;

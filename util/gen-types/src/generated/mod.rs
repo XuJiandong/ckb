@@ -12,6 +12,9 @@ mod blockchain;
 mod extensions;
 #[allow(clippy::all)]
 #[allow(clippy::fallible_impl_from)]
+mod proposal;
+#[allow(clippy::all)]
+#[allow(clippy::fallible_impl_from)]
 mod protocols;
 
 pub mod packed {
@@ -33,5 +36,6 @@ pub mod packed {
 
     pub use super::blockchain::*;
     pub use super::extensions::*;
+    pub use super::proposal::*;
     pub use super::protocols::*;
 }
