@@ -17,7 +17,7 @@ use ckb_types::{
 };
 
 // TODO:
-pub const PROPOSAL_CYCLES: Cycle = 100_000_000;
+pub const PROPOSAL_CYCLES: Cycle = 50_000_000;
 
 /// Minimum capacity (in shannon) that a proposal cell must lock at creation
 /// time as an anti-spam deposit. Set to 1000 CKBytes.
@@ -175,8 +175,8 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
                 .try_into()
                 .map_err(|_| self.validation_failure(ERROR_PARSE_CELL_DATA))?,
         );
-        // TODO: this is about 30 days
-        if !(360..=250_000).contains(&duration) {
+        // TODO: this is about 7 days
+        if !(360..=60_000).contains(&duration) {
             return Err(self.validation_failure(ERROR_PARSE_CELL_DATA));
         }
         let start_header = self

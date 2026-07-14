@@ -34,6 +34,7 @@ use tokio::sync::{
     watch::{self, Receiver},
 };
 
+// "PROPOSAL" in hex
 pub const PROPOSAL_TYPE_CODE_HASH: H256 = h256!("0x50524f504f53414c");
 
 #[cfg(test)]
