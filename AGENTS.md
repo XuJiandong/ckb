@@ -20,7 +20,6 @@ make clippy
 make fmt
 make check-whitespaces
 ```
-Do not run them after every small change.
 
 ## Cycles
 When adding code whose computation scales with input data, charge cycles accordingly.
