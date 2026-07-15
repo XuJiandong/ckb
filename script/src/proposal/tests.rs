@@ -1,10 +1,10 @@
-use super::BlockProvider;
 use super::count_vote::count_vote;
 use super::{
     ERROR_INSUFFICIENT_CAPACITY, MIN_PROPOSAL_CAPACITY, PROPOSAL_CYCLES, ProposalTypeSystemScript,
 };
 use crate::{ScriptError, ScriptGroup, ScriptGroupType};
 use ckb_hash::{blake2b_256, new_blake2b};
+use ckb_traits::BlockProvider;
 use ckb_types::{
     core::{BlockBuilder, BlockView, HeaderView, TransactionBuilder, cell::ResolvedTransaction},
     packed::{self, Proposal, Uint16Vec, Vote},

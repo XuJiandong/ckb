@@ -4,12 +4,12 @@
 //! of cell data and other blockchain information needed for transaction verification.
 use crate::ChainStore;
 use ckb_traits::{
-    CellDataProvider, EpochProvider, ExtensionProvider, HeaderFields, HeaderFieldsProvider,
-    HeaderProvider,
+    BlockProvider, CellDataProvider, EpochProvider, ExtensionProvider, HeaderFields,
+    HeaderFieldsProvider, HeaderProvider,
 };
 use ckb_types::{
     bytes::Bytes,
-    core::{BlockExt, BlockNumber, EpochExt, HeaderView},
+    core::{BlockExt, BlockNumber, BlockView, EpochExt, HeaderView},
     packed::{self, Byte32, OutPoint},
 };
 use std::sync::Arc;
@@ -108,6 +108,24 @@ where
     }
 }
 
+impl<T> BlockProvider for DataLoaderWrapper<T>
+where
+    T: ChainStore,
+{
+    fn get_block(&self, hash: &Byte32) -> Option<BlockView> {
+        ChainStore::get_block(self.0.as_ref(), hash)
+    }
+
+    fn get_block_header(&self, hash: &Byte32) -> Option<HeaderView> {
+        ChainStore::get_block_header(self.0.as_ref(), hash)
+    }
+
+    fn get_block_by_number(&self, number: BlockNumber) -> Option<BlockView> {
+        ChainStore::get_block_hash(self.0.as_ref(), number)
+            .and_then(|hash| ChainStore::get_block(self.0.as_ref(), &hash))
+    }
+}
+
 /// Borrowed DataLoaderWrapper with lifetime
 pub struct BorrowedDataLoaderWrapper<'a, T>(&'a T);
 impl<'a, T: ChainStore> BorrowedDataLoaderWrapper<'a, T> {
@@ -154,6 +172,22 @@ impl<'a, T: ChainStore> EpochProvider for BorrowedDataLoaderWrapper<'a, T> {
 
 impl<'a, T: ChainStore> ExtensionProvider for BorrowedDataLoaderWrapper<'a, T> {
     fn get_block_extension(&self, hash: &Byte32) -> Option<packed::Bytes> {
-        ChainStore::get_block_extension(self.0, hash)
+        self.0.get_block_extension(hash)
+    }
+}
+
+impl<'a, T: ChainStore> BlockProvider for BorrowedDataLoaderWrapper<'a, T> {
+    fn get_block(&self, hash: &Byte32) -> Option<BlockView> {
+        self.0.get_block(hash)
+    }
+
+    fn get_block_header(&self, hash: &Byte32) -> Option<HeaderView> {
+        self.0.get_block_header(hash)
+    }
+
+    fn get_block_by_number(&self, number: BlockNumber) -> Option<BlockView> {
+        self.0
+            .get_block_hash(number)
+            .and_then(|hash| self.0.get_block(&hash))
     }
 }

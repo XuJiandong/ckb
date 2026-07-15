@@ -3,7 +3,7 @@ use crate::ChunkCommand;
 use crate::scheduler::Scheduler;
 use crate::{
     error::{ScriptError, TransactionScriptError},
-    proposal::{BlockProvider, ProposalTypeSystemScript},
+    proposal::ProposalTypeSystemScript,
     syscalls::generator::generate_ckb_syscalls,
     type_id::TypeIdSystemScript,
     types::{
@@ -16,11 +16,11 @@ use ckb_chain_spec::consensus::{Consensus, TYPE_ID_CODE_HASH};
 use ckb_error::Error;
 #[cfg(feature = "logging")]
 use ckb_logger::{debug, info};
-use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
+use ckb_traits::{BlockProvider, CellDataProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
     H256,
     bytes::Bytes,
-    core::{Cycle, ScriptHashType, cell::ResolvedTransaction},
+    core::{Cycle, HeaderView, ScriptHashType, cell::ResolvedTransaction},
     h256,
     packed::{Byte32, Script},
 };
@@ -241,20 +241,55 @@ where
         } else if group.script.code_hash() == PROPOSAL_TYPE_CODE_HASH.into()
             && Into::<u8>::into(group.script.hash_type()) == Into::<u8>::into(ScriptHashType::Type)
         {
-            let bp = self
-                .block_provider
-                .as_deref()
-                .ok_or_else(|| ScriptError::Other("block provider not set".to_string()))?;
+            self.verify_proposal_group(group, max_cycles)
+        } else {
+            self.run(group, max_cycles)
+        }
+    }
+
+    fn verify_proposal_group(
+        &self,
+        group: &ScriptGroup,
+        max_cycles: Cycle,
+    ) -> Result<Cycle, ScriptError> {
+        // Creation only validates Type ID + capacity — no block access required.
+        // A no-op provider is used so the same code path works without a store-backed
+        // block provider (e.g. pure unit tests that only exercise creation).
+        struct NoopBlockProvider;
+        impl BlockProvider for NoopBlockProvider {
+            fn get_block(&self, _: &Byte32) -> Option<ckb_types::core::BlockView> {
+                None
+            }
+            fn get_block_header(&self, _: &Byte32) -> Option<HeaderView> {
+                None
+            }
+            fn get_block_by_number(&self, _: u64) -> Option<ckb_types::core::BlockView> {
+                None
+            }
+        }
+
+        let is_creation = group.input_indices.is_empty();
+        if is_creation {
             let verifier = ProposalTypeSystemScript {
                 rtx: &self.tx_data.rtx,
                 script_group: group,
                 max_cycles,
-                block_provider: bp,
+                block_provider: &NoopBlockProvider,
             };
-            verifier.verify()
-        } else {
-            self.run(group, max_cycles)
+            return verifier.verify();
         }
+
+        let bp = self
+            .block_provider
+            .as_deref()
+            .ok_or_else(|| ScriptError::Other("block provider not set".to_string()))?;
+        let verifier = ProposalTypeSystemScript {
+            rtx: &self.tx_data.rtx,
+            script_group: group,
+            max_cycles,
+            block_provider: bp,
+        };
+        verifier.verify()
     }
 
     /// Create a scheduler to manage virtual machine instances.
@@ -366,17 +401,7 @@ where
         } else if group.script.code_hash() == PROPOSAL_TYPE_CODE_HASH.into()
             && Into::<u8>::into(group.script.hash_type()) == Into::<u8>::into(ScriptHashType::Type)
         {
-            let bp = self
-                .block_provider
-                .as_deref()
-                .ok_or_else(|| ScriptError::Other("block provider not set".to_string()))?;
-            let verifier = ProposalTypeSystemScript {
-                rtx: &self.tx_data.rtx,
-                script_group: group,
-                max_cycles,
-                block_provider: bp,
-            };
-            verifier.verify()
+            self.verify_proposal_group(group, max_cycles)
         } else {
             self.chunk_run_with_signal(group, max_cycles, command_rx)
                 .await

@@ -10,7 +10,8 @@ use ckb_error::Error;
 use ckb_script::ChunkCommand;
 use ckb_script::TransactionScriptsVerifier;
 use ckb_traits::{
-    CellDataProvider, EpochProvider, ExtensionProvider, HeaderFieldsProvider, HeaderProvider,
+    BlockProvider, CellDataProvider, EpochProvider, ExtensionProvider, HeaderFieldsProvider,
+    HeaderProvider,
 };
 use ckb_types::{
     core::{
@@ -111,7 +112,14 @@ impl<'a> NonContextualTransactionVerifier<'a> {
 /// [`FeeCalculator`](./struct.FeeCalculator.html)
 pub struct ContextualTransactionVerifier<DL>
 where
-    DL: Send + Sync + Clone + CellDataProvider + HeaderProvider + ExtensionProvider + 'static,
+    DL: Send
+        + Sync
+        + Clone
+        + CellDataProvider
+        + HeaderProvider
+        + ExtensionProvider
+        + BlockProvider
+        + 'static,
 {
     pub(crate) time_relative: TimeRelativeTransactionVerifier<DL>,
     pub(crate) capacity: CapacityVerifier,
@@ -126,6 +134,7 @@ where
         + ExtensionProvider
         + HeaderFieldsProvider
         + EpochProvider
+        + BlockProvider
         + Send
         + Sync
         + Clone
@@ -150,7 +159,8 @@ where
                 data_loader.clone(),
                 Arc::clone(&consensus),
                 Arc::clone(&tx_env),
-            ),
+            )
+            .with_block_provider(Arc::new(data_loader.clone())),
             capacity: CapacityVerifier::new(Arc::clone(&rtx), consensus.dao_type_hash()),
             fee_calculator: FeeCalculator::new(rtx, consensus, data_loader),
         }

@@ -1,9 +1,8 @@
 #![allow(missing_docs)]
-use super::{
-    BlockProvider, ERROR_BLOCK_COUNT_MISMATCH, ERROR_OVERFLOW, ERROR_UNEXPECTED, PROPOSAL_CYCLES,
-};
+use super::{ERROR_BLOCK_COUNT_MISMATCH, ERROR_OVERFLOW, ERROR_UNEXPECTED, PROPOSAL_CYCLES};
 use crate::ScriptError;
 use ckb_hash::blake2b_256;
+use ckb_traits::BlockProvider;
 use ckb_types::{
     core::{BlockView, Cycle},
     packed::{Proposal, Script, Vote},

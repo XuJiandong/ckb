@@ -6,10 +6,12 @@ use crate::proposal::count_vote::count_vote;
 use crate::{ScriptError, ScriptGroup};
 use ckb_hash::new_blake2b;
 use ckb_types::{
-    core::{BlockView, Cycle, HeaderView, cell::ResolvedTransaction},
-    packed::{Byte32, Proposal},
+    core::{Cycle, cell::ResolvedTransaction},
+    packed::Proposal,
     prelude::*,
 };
+
+pub use ckb_traits::BlockProvider;
 
 // TODO:
 pub const PROPOSAL_CYCLES: Cycle = 50_000_000;
@@ -36,12 +38,6 @@ pub const ERROR_PARSE_CELL_DATA: i8 = -12;
 pub const ERROR_OVERFLOW: i8 = -13;
 pub const ERROR_UNEXPECTED: i8 = -14;
 pub const ERROR_INSUFFICIENT_CAPACITY: i8 = -15;
-
-pub trait BlockProvider {
-    fn get_block(&self, hash: &Byte32) -> Option<BlockView>;
-    fn get_block_header(&self, hash: &Byte32) -> Option<HeaderView>;
-    fn get_block_by_number(&self, number: u64) -> Option<BlockView>;
-}
 
 pub struct ProposalTypeSystemScript<'a, B: BlockProvider + ?Sized> {
     pub rtx: &'a ResolvedTransaction,
@@ -153,12 +149,27 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
             return Err(self.validation_failure(ERROR_INVALID_START_BLOCK));
         }
 
+        // Resolved inputs are not eager-loaded (`mem_cell_data` is usually None).
+        // Load the proposal cell data from the creating block instead.
         let proposal = {
-            let cell_data = resolved_input
-                .mem_cell_data
-                .as_ref()
-                .ok_or_else(|| self.validation_failure(ERROR_PARSE_CELL_DATA))?;
-            Proposal::from_compatible_slice(cell_data)
+            let cell_data = match resolved_input.mem_cell_data.as_ref() {
+                Some(data) => data.clone(),
+                None => {
+                    let block = self
+                        .block_provider
+                        .get_block(&header_dep_0)
+                        .ok_or_else(|| self.validation_failure(ERROR_INVALID_START_BLOCK))?;
+                    let tx = block
+                        .transaction(tx_info.index)
+                        .ok_or_else(|| self.validation_failure(ERROR_PARSE_CELL_DATA))?;
+                    let output_index: usize = resolved_input.out_point.index().into();
+                    tx.outputs_data()
+                        .get(output_index)
+                        .ok_or_else(|| self.validation_failure(ERROR_PARSE_CELL_DATA))?
+                        .raw_data()
+                }
+            };
+            Proposal::from_compatible_slice(&cell_data)
                 .map_err(|_| self.validation_failure(ERROR_PARSE_CELL_DATA))?
         };
 
@@ -170,8 +181,9 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
                 .try_into()
                 .map_err(|_| self.validation_failure(ERROR_PARSE_CELL_DATA))?,
         );
-        // TODO: this is about 7 days
-        if !(360..=60_000).contains(&duration) {
+        // Rough bounds: reject zero / absurdly large durations that would stall verification.
+        // Concrete product ranges still TBD (see creation-time validation TODO).
+        if !(1..=60_000).contains(&duration) {
             return Err(self.validation_failure(ERROR_PARSE_CELL_DATA));
         }
         let start_header = self
