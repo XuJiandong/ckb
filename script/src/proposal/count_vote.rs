@@ -62,6 +62,8 @@ fn process_block(
 ) -> Result<(), ScriptError> {
     let unexpected = || ScriptError::validation_failure(proposal_script, ERROR_UNEXPECTED);
     let cycles = &mut state.cycles;
+    // Cycles are calculated based on the whole block. Since every tx is included in the block, we skip adding cycles for each tx later.
+    // The other rule is that every map operation adds extra cycles, because map operations consume memory and computations.
     *cycles += (block.data().total_size() as Cycle) * 4;
     if *cycles > PROPOSAL_CYCLES {
         return Err(ScriptError::ExceededMaximumCycles(*cycles));
@@ -77,12 +79,13 @@ fn process_block(
                 .as_slice()
                 .try_into()
                 .map_err(|_| unexpected())?;
+
+            *cycles += 1000;
+            if *cycles > PROPOSAL_CYCLES {
+                return Err(ScriptError::ExceededMaximumCycles(*cycles));
+            }
             if let Some(voter_lock_hash) = state.dao_outpoint_to_voter.remove(&op_bytes) {
                 state.vote_map.remove(&voter_lock_hash);
-                *cycles += 1000;
-                if *cycles > PROPOSAL_CYCLES {
-                    return Err(ScriptError::ExceededMaximumCycles(*cycles));
-                }
             }
         }
 
@@ -132,25 +135,30 @@ fn process_block(
                     u16::from_le_bytes(idx_reader.as_slice().try_into().map_err(|_| unexpected())?)
                         as usize;
                 if let Some(cell_dep) = cell_deps.get(idx) {
+                    // The vote type script already verifies that these DAO deposit cells
+                    // belong to the voter, so we can skip the check here, saving
+                    // many load operations.
                     let op_bytes: [u8; 36] = cell_dep
                         .out_point()
                         .as_slice()
                         .try_into()
                         .map_err(|_| unexpected())?;
-                    state
-                        .dao_outpoint_to_voter
-                        .insert(op_bytes, voter_lock_hash);
                     *cycles += 1000;
                     if *cycles > PROPOSAL_CYCLES {
                         return Err(ScriptError::ExceededMaximumCycles(*cycles));
                     }
+                    // Collect DAO deposit cells to prevent them from being spent in a
+                    // following transaction, which prevents double voting.
+                    state
+                        .dao_outpoint_to_voter
+                        .insert(op_bytes, voter_lock_hash);
                 }
             }
-            state.vote_map.insert(voter_lock_hash, (direction, amount));
             *cycles += 1000;
             if *cycles > PROPOSAL_CYCLES {
                 return Err(ScriptError::ExceededMaximumCycles(*cycles));
             }
+            state.vote_map.insert(voter_lock_hash, (direction, amount));
         }
     }
 
