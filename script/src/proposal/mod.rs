@@ -1,4 +1,6 @@
 pub mod count_vote;
+#[cfg(feature = "probe")]
+pub mod probe;
 #[cfg(test)]
 mod tests;
 
@@ -12,6 +14,24 @@ use ckb_types::{
 };
 
 pub use ckb_traits::BlockProvider;
+
+#[cfg(feature = "probe")]
+struct VerifyGuard;
+
+#[cfg(feature = "probe")]
+impl VerifyGuard {
+    fn new() -> Self {
+        probe::proposal_probe::verify_entry!(|| ());
+        VerifyGuard
+    }
+}
+
+#[cfg(feature = "probe")]
+impl Drop for VerifyGuard {
+    fn drop(&mut self) {
+        probe::proposal_probe::verify_exit!(|| ());
+    }
+}
 
 // TODO:
 pub const PROPOSAL_CYCLES: Cycle = 50_000_000;
@@ -48,6 +68,9 @@ pub struct ProposalTypeSystemScript<'a, B: BlockProvider + ?Sized> {
 
 impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
     pub fn verify(&self) -> Result<Cycle, ScriptError> {
+        #[cfg(feature = "probe")]
+        let _verify_guard = VerifyGuard::new();
+
         if self.max_cycles < PROPOSAL_CYCLES {
             return Err(ScriptError::ExceededMaximumCycles(self.max_cycles));
         }
@@ -155,9 +178,12 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
             let cell_data = match resolved_input.mem_cell_data.as_ref() {
                 Some(data) => data.clone(),
                 None => {
-                    let block = self
-                        .block_provider
-                        .get_block(&header_dep_0)
+                    #[cfg(feature = "probe")]
+                    probe::proposal_probe::block_provider_entry!(|| ());
+                    let block_opt = self.block_provider.get_block(&header_dep_0);
+                    #[cfg(feature = "probe")]
+                    probe::proposal_probe::block_provider_exit!(|| ());
+                    let block = block_opt
                         .ok_or_else(|| self.validation_failure(ERROR_INVALID_START_BLOCK))?;
                     let tx = block
                         .transaction(tx_info.index)
@@ -186,14 +212,20 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
         if !(1..=60_000).contains(&duration) {
             return Err(self.validation_failure(ERROR_PARSE_CELL_DATA));
         }
-        let start_header = self
-            .block_provider
-            .get_block_header(&header_dep_0)
-            .ok_or_else(|| self.validation_failure(ERROR_INVALID_START_BLOCK))?;
-        let end_header = self
-            .block_provider
-            .get_block_header(&header_dep_1)
-            .ok_or_else(|| self.validation_failure(ERROR_BLOCK_RANGE_INVALID))?;
+        #[cfg(feature = "probe")]
+        probe::proposal_probe::block_provider_entry!(|| ());
+        let start_header_opt = self.block_provider.get_block_header(&header_dep_0);
+        #[cfg(feature = "probe")]
+        probe::proposal_probe::block_provider_exit!(|| ());
+        let start_header =
+            start_header_opt.ok_or_else(|| self.validation_failure(ERROR_INVALID_START_BLOCK))?;
+        #[cfg(feature = "probe")]
+        probe::proposal_probe::block_provider_entry!(|| ());
+        let end_header_opt = self.block_provider.get_block_header(&header_dep_1);
+        #[cfg(feature = "probe")]
+        probe::proposal_probe::block_provider_exit!(|| ());
+        let end_header =
+            end_header_opt.ok_or_else(|| self.validation_failure(ERROR_BLOCK_RANGE_INVALID))?;
 
         let expected_end_number = start_header.number() + duration as u64;
         if end_header.number() != expected_end_number {

@@ -11,12 +11,13 @@ repository = "https://github.com/nervosnetwork/ckb"
 rust-version = "1.95.0"
 
 [features]
-default = ["logging", "detect-asm"]
+default = ["logging", "detect-asm", "probe"]
 
 asm = ["ckb-vm/asm"]
 detect-asm = ["ckb-vm/detect-asm"]
 logging = ["ckb-logger"]
 flatmemory = []
+probe = ["dep:usdt"]
 
 [dependencies]
 ckb-traits.workspace = true
@@ -26,6 +27,7 @@ ckb-hash.workspace = true
 ckb-vm.workspace = true
 faster-hex.workspace = true
 ckb-logger = { workspace = true, optional = true }
+usdt = { version = "0.6", optional = true, default-features = false }
 serde = { workspace = true, features = ["derive"] }
 ckb-error.workspace = true
 ckb-chain-spec.workspace = true

@@ -194,11 +194,14 @@ pub fn count_vote<B: BlockProvider + ?Sized>(
     let proposal_blake160: [u8; 20] = blake160(proposal_script.as_slice());
 
     for block_number in (start_number + 1)..=(start_number + duration) {
-        let block = block_provider
-            .get_block_by_number(block_number)
-            .ok_or_else(|| {
-                ScriptError::validation_failure(proposal_script, ERROR_BLOCK_COUNT_MISMATCH)
-            })?;
+        #[cfg(feature = "probe")]
+        super::probe::proposal_probe::block_provider_entry!(|| ());
+        let block_opt = block_provider.get_block_by_number(block_number);
+        #[cfg(feature = "probe")]
+        super::probe::proposal_probe::block_provider_exit!(|| ());
+        let block = block_opt.ok_or_else(|| {
+            ScriptError::validation_failure(proposal_script, ERROR_BLOCK_COUNT_MISMATCH)
+        })?;
         process_block(
             &block,
             vote_code_hash.as_slice(),
