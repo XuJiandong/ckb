@@ -7,13 +7,21 @@ mod tests;
 use crate::proposal::count_vote::count_vote;
 use crate::{ScriptError, ScriptGroup};
 use ckb_hash::new_blake2b;
+#[cfg(feature = "skip-checking")]
+use ckb_logger::warn;
 use ckb_types::{
     core::{Cycle, cell::ResolvedTransaction},
     packed::Proposal,
     prelude::*,
 };
 
-pub use ckb_traits::BlockProvider;
+pub use ckb_traits::{BlockProvider, CellDataProvider};
+
+/// Combined provider trait for types that serve both block and cell data.
+/// Needed because Rust disallows `dyn BlockProvider + CellDataProvider` directly.
+pub trait BlockAndCellProvider: BlockProvider + CellDataProvider {}
+
+impl<T: BlockProvider + CellDataProvider + ?Sized> BlockAndCellProvider for T {}
 
 #[cfg(feature = "probe")]
 struct VerifyGuard;
@@ -59,14 +67,14 @@ pub const ERROR_OVERFLOW: i8 = -13;
 pub const ERROR_UNEXPECTED: i8 = -14;
 pub const ERROR_INSUFFICIENT_CAPACITY: i8 = -15;
 
-pub struct ProposalTypeSystemScript<'a, B: BlockProvider + ?Sized> {
+pub struct ProposalTypeSystemScript<'a, B: CellDataProvider + BlockProvider + ?Sized> {
     pub rtx: &'a ResolvedTransaction,
     pub script_group: &'a ScriptGroup,
     pub max_cycles: Cycle,
     pub block_provider: &'a B,
 }
 
-impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
+impl<'a, B: CellDataProvider + BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
     pub fn verify(&self) -> Result<Cycle, ScriptError> {
         #[cfg(feature = "probe")]
         let _verify_guard = VerifyGuard::new();
@@ -169,31 +177,25 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
             .ok_or_else(|| self.validation_failure(ERROR_MISSING_HEADER_DEPS))?;
 
         if header_dep_0.as_slice() != start_block_hash.as_slice() {
-            return Err(self.validation_failure(ERROR_INVALID_START_BLOCK));
+            #[cfg(feature = "skip-checking")]
+            {
+                warn!("Skip checking. for benchmark only.")
+            }
+            #[cfg(not(feature = "skip-checking"))]
+            {
+                return Err(self.validation_failure(ERROR_INVALID_START_BLOCK));
+            }
         }
 
         // Resolved inputs are not eager-loaded (`mem_cell_data` is usually None).
-        // Load the proposal cell data from the creating block instead.
+        // Load the proposal cell data directly from storage.
         let proposal = {
             let cell_data = match resolved_input.mem_cell_data.as_ref() {
                 Some(data) => data.clone(),
-                None => {
-                    #[cfg(feature = "probe")]
-                    probe::proposal_probe::block_provider_entry!(|| ());
-                    let block_opt = self.block_provider.get_block(&header_dep_0);
-                    #[cfg(feature = "probe")]
-                    probe::proposal_probe::block_provider_exit!(|| ());
-                    let block = block_opt
-                        .ok_or_else(|| self.validation_failure(ERROR_INVALID_START_BLOCK))?;
-                    let tx = block
-                        .transaction(tx_info.index)
-                        .ok_or_else(|| self.validation_failure(ERROR_PARSE_CELL_DATA))?;
-                    let output_index: usize = resolved_input.out_point.index().into();
-                    tx.outputs_data()
-                        .get(output_index)
-                        .ok_or_else(|| self.validation_failure(ERROR_PARSE_CELL_DATA))?
-                        .raw_data()
-                }
+                None => self
+                    .block_provider
+                    .get_cell_data(&resolved_input.out_point)
+                    .ok_or_else(|| self.validation_failure(ERROR_PARSE_CELL_DATA))?,
             };
             Proposal::from_compatible_slice(&cell_data)
                 .map_err(|_| self.validation_failure(ERROR_PARSE_CELL_DATA))?
@@ -242,7 +244,15 @@ impl<'a, B: BlockProvider + ?Sized> ProposalTypeSystemScript<'a, B> {
         if result.passed {
             Ok(cycles)
         } else {
-            Err(self.validation_failure(ERROR_PROPOSAL_FAILED))
+            #[cfg(feature = "skip-checking")]
+            {
+                warn!("Skip checking. for benchmark only.");
+                Ok(cycles)
+            }
+            #[cfg(not(feature = "skip-checking"))]
+            {
+                Err(self.validation_failure(ERROR_PROPOSAL_FAILED))
+            }
         }
     }
 

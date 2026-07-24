@@ -1,5 +1,6 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::ChunkCommand;
+use crate::proposal::BlockAndCellProvider;
 use crate::scheduler::Scheduler;
 use crate::{
     error::{ScriptError, TransactionScriptError},
@@ -22,7 +23,7 @@ use ckb_types::{
     bytes::Bytes,
     core::{Cycle, HeaderView, ScriptHashType, cell::ResolvedTransaction},
     h256,
-    packed::{Byte32, Script},
+    packed::{Byte32, OutPoint, Script},
 };
 #[cfg(not(target_family = "wasm"))]
 use ckb_vm::machine::Pause as VMPause;
@@ -49,7 +50,7 @@ pub struct TransactionScriptsVerifier<
     tx_data: Arc<TxData<DL>>,
     syscall_generator: SyscallGenerator<DL, V, <M as DefaultMachineRunner>::Inner>,
     syscall_context: V,
-    block_provider: Option<Arc<dyn BlockProvider + Send + Sync>>,
+    block_provider: Option<Arc<dyn BlockAndCellProvider + Send + Sync>>,
 }
 
 impl<DL> TransactionScriptsVerifier<DL>
@@ -128,7 +129,7 @@ where
     }
 
     /// Sets a block provider for embedded scripts that require block access
-    pub fn with_block_provider(mut self, bp: Arc<dyn BlockProvider + Send + Sync>) -> Self {
+    pub fn with_block_provider(mut self, bp: Arc<dyn BlockAndCellProvider + Send + Sync>) -> Self {
         self.block_provider = Some(bp);
         self
     }
@@ -264,6 +265,14 @@ where
                 None
             }
             fn get_block_by_number(&self, _: u64) -> Option<ckb_types::core::BlockView> {
+                None
+            }
+        }
+        impl CellDataProvider for NoopBlockProvider {
+            fn get_cell_data(&self, _: &OutPoint) -> Option<Bytes> {
+                None
+            }
+            fn get_cell_data_hash(&self, _: &OutPoint) -> Option<Byte32> {
                 None
             }
         }

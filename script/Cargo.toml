@@ -18,6 +18,7 @@ detect-asm = ["ckb-vm/detect-asm"]
 logging = ["ckb-logger"]
 flatmemory = []
 probe = ["dep:usdt"]
+skip-checking = ["logging"]
 
 [dependencies]
 ckb-traits.workspace = true

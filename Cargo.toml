@@ -24,6 +24,7 @@ ckb-build-info.workspace = true
 [dependencies]
 ckb-build-info.workspace = true
 ckb-bin.workspace = true
+ckb-script.workspace = true
 console-subscriber = { workspace = true, optional = true }
 
 [target.'cfg(target_env = "msvc")'.dependencies]
@@ -338,3 +339,4 @@ profiling = ["tikv-jemallocator/profiling", "ckb-bin/profiling"]
 portable = ["ckb-bin/portable"]
 march-native = ["ckb-bin/march-native"]
 tokio-trace = ["console-subscriber"]
+skip-checking = ["ckb-script/skip-checking"]

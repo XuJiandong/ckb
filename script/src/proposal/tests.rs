@@ -4,8 +4,9 @@ use super::{
 };
 use crate::{ScriptError, ScriptGroup, ScriptGroupType};
 use ckb_hash::{blake2b_256, new_blake2b};
-use ckb_traits::BlockProvider;
+use ckb_traits::{BlockProvider, CellDataProvider};
 use ckb_types::{
+    bytes::Bytes,
     core::{BlockBuilder, BlockView, HeaderView, TransactionBuilder, cell::ResolvedTransaction},
     packed::{self, Proposal, Uint16Vec, Vote},
     prelude::*,
@@ -39,6 +40,15 @@ impl BlockProvider for MockBlockProvider {
 
     fn get_block_by_number(&self, number: u64) -> Option<BlockView> {
         self.blocks.get(&number).cloned()
+    }
+}
+
+impl CellDataProvider for MockBlockProvider {
+    fn get_cell_data(&self, _: &packed::OutPoint) -> Option<Bytes> {
+        None
+    }
+    fn get_cell_data_hash(&self, _: &packed::OutPoint) -> Option<packed::Byte32> {
+        None
     }
 }
 
